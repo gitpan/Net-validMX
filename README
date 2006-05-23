@@ -1,0 +1,82 @@
+NAME
+    Net::ValidMX - PERL Module to use DNS to verify if an email address
+    could be valid.
+
+SYNOPSIS
+    Net::ValidMX - What I wanted was the ability to use DNS to verify if an
+    email address COULD be valid. This could be used for sender verification
+    with programs such as MIMEDefang or for websites to verify email
+    addresses prior to registering users and/or sending a confirmation
+    email.
+
+INSTALLATION
+    To install this package, uncompress the distribution, change to the
+    directory where the files are present and type:
+
+            perl Makefile.PL
+            make
+            make install
+
+USE
+    To use the module in your programs you will use the line:
+
+            use Net::ValidMX;
+
+  check_valid_mx
+    To check if an email address could be valid by checking the DNS, call
+    the function check_valid_mx with the email address as the only argument:
+
+            &Net::validMX::check_valid_mx('kevin.mcgrail@thoughtworthy.com');
+
+  EXAMPLE
+    The distribution contains an example program suitable to demonstrate
+    working functionality and to query one or more email addresses.
+
+    Without any parameters, it will run a set of default tests:
+
+            perl examples/check_primary_mx.pl
+
+    Otherwise, run the program with the email addresses to test as your
+    arguments:
+
+            perl examples/check_primary_mx.pl kevin.mcgrail@thoughtworthy.com
+
+COPYRIGHT
+    Copyright (c) 2006 Kevin A. McGrail. All rights reserved.
+
+    This program is free software; you can redistribute it and/or modify it
+    under the Perl Artistic License v1.0 available at
+    http://www.perlfoundation.org/legal/licenses/artistic-1_0.html
+
+    perlartistic
+
+AUTHOR INFORMATION
+    Kevin A. McGrail kevin.mcgrail@thoughtworthy.com
+
+UPDATE HISTORY
+    v1.0 Released Oct 11, 2005. Original release for MIMEDefang filter.
+    v2.0 Released Nov 3, 2005. Incorporated many user updates.
+    v2.1 Released May 23, 2006. Switched to a perl Library (Net::validMX).
+    Small efficiency change to short-circuit the DNS resolution of an IP
+    address.
+
+HOMEPAGE
+    Releases can be found at http://www.thoughtworthy.com/downloads/ and on
+    CPAN at http://search.cpan.org/~kmcgrail/.
+
+CAVEATS
+    THIS PACKAGE IS PROVIDED "AS IS" AND WITHOUT ANY EXPRESS OR IMPLIED
+    WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
+    MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+
+TODO
+    - I'd like to convert the example script into a test script.
+    - I'd like to make it so that the Makefile.PL creates a README on the
+    fly from the pod in the library instead of pod2text lib/Net/validMX.pm >
+    README.
+
+CREDITS
+    Thanks to David F. Skoll, Jan-Pieter Cornet, Matthew van Eerde, and Mark
+    Damrose for testing and suggestions. Apologizes in advance if I missed
+    anyone!
+
