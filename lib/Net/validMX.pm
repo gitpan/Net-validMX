@@ -6,7 +6,7 @@ use Net::DNS;
 use vars qw(
     $VERSION
     @ISA
-    @EXPORT
+    @EXPORT_OK
 );
 
 BEGIN {
@@ -14,12 +14,12 @@ BEGIN {
     require Exporter;
 
     @ISA     = qw(Exporter DynaLoader);
-    $VERSION = '2.1.0';
+    $VERSION = '2.2.0';
 }
 
 sub version      { $VERSION; }
 
-@EXPORT = qw(check_valid_mx get_output_result);
+@EXPORT_OK = qw(check_valid_mx get_output_result check_email_and_mx check_email_validity);
 
 sub get_output_result {
   my ($email, $rv, $reason) = @_;
@@ -200,8 +200,13 @@ sub check_valid_mx {
                 }
               } else {
                 if ($allow_ip_address_as_mx > 0 && $answer[$i]->exchange =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) {
-                  print "DEBUG: Test Passed - Allowing IP Address as Hostname\n" if $debug;
-                  return (1, '');
+                  ($rv, $reason) = &invalid_mx($answer[$i]->exchange);
+                  if ($rv) {
+                    return (0, $reason);
+                  } else {
+                    print "DEBUG: Test Passed - Allowing IP Address as Hostname\n" if $debug;
+                    return (1, '');
+                  }
                 }
 
                 #MX RECORD IS A CNAME WHICH DOES NOT RESOLVE
@@ -221,8 +226,13 @@ sub check_valid_mx {
             } else {
               #PERHAPS WE'LL ALLOW AN IP ADDRESS AS AN MX FOR MORONS WHO CONFIGURE DNS INCORRECTLY
               if ($allow_ip_address_as_mx > 0 && $answer[$i]->exchange =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) {
-                print "DEBUG: Test Passed - Allowing IP Address as Hostname\n" if $debug;
-                return (1, '');
+                ($rv, $reason) = &invalid_mx($answer[$i]->exchange);
+                if ($rv) {
+                  return (0, $reason);
+                } else {
+                  print "DEBUG: Test Passed - Allowing IP Address as Hostname\n" if $debug;
+                  return (1, '');
+                }
               }
 
               #MX RECORD RETURNED DOES NOT RESOLVE
@@ -386,21 +396,76 @@ sub int_to_truefalse {
   }
 }
 
+sub check_email_and_mx {
+  my ($email) = @_;
+  my ($rv, $fail_reason, $status, $debug);
+
+  $debug = 0;
+
+  $email || return 0;
+  
+  print "DEBUG: e-mail address is: $email<br>\n" if $debug;
+  
+  # SANITIZE THE E-MAIL ADDRESS OF SPACES
+  $email =~ s/ //g;
+
+  # CHECK FOR STUPID AOL USERS
+  $email =~ s/\@aol\.?$/\@aol.com/i;
+
+  print "DEBUG: e-mail address is now: $email<br>\n" if $debug;
+  
+  # CHECK FOR A VALIDLY CONSTRUCTED E-MAIL ADDRESS
+  ($rv) = &Net::validMX::check_email_validity($email);
+  
+  if ($rv < 1) {
+    return($rv, "Failed check_email_validity", $email);
+  }
+
+  # CHECK FOR VALID MX RECORD
+  ($rv, $fail_reason) = &Net::validMX::check_valid_mx($email);
+
+  if ($rv < 1) {
+    return($rv, $fail_reason, $email);
+  }
+
+  return($rv, "Passed", $email);
+}
+
+sub check_email_validity {
+  my ($email) = @_;
+
+  #allows an email address that contains -()/!#$%&*+~. A through Z a through Z and 0 through 9 in a format of [valid]@([valid].[valid]...).[valid] 
+  if ($email =~ /\.\./) {
+    return 0;
+  }
+
+  if ($email =~ /^[-()\/!#$%&*+~_A-Za-z0-9\.]+@[-()\/!#$%&*+~_A-Za-z0-9\.]+\.[-()\/!#$%&*+~_A-Za-z0-9\.]+$/) {
+    return 1;
+  }
+  return 0;
+
+}
+
 1;
 
 __END__
 
 =head1 NAME
 
-Net::ValidMX - PERL Module to use DNS to verify if an email address could be
-valid.
+Net::ValidMX - PERL Module to use DNS and/or regular expressions to verify if an email 
+address could be valid.
 
 =head1 SYNOPSIS
 
-Net::ValidMX - What I wanted was the ability to use DNS to verify if an email address
-COULD be valid.  This could be used for sender verification with programs
-such as MIMEDefang or for websites to verify email addresses prior to
-registering users and/or sending a confirmation email.
+Net::ValidMX - I wanted the ability to use DNS to verify if an email address
+COULD be valid by checking for valid MX records.  This could be used for sender 
+verification for emails with a program such as MIMEDefang or for websites to 
+verify email addresses prior to registering users and/or sending a confirmation email.
+
+=head1 PRE-REQUISITE MODULES
+
+Net::DNS v0.53 or greater.
+Test::More.
 
 =head1 INSTALLATION
 
@@ -409,6 +474,7 @@ where the files are present and type:
 
 	perl Makefile.PL
 	make
+	make test
 	make install
 
 =head1 USE
@@ -420,31 +486,99 @@ To use the module in your programs you will use the line:
 =head2 check_valid_mx
 
 To check if an email address could be valid by checking the DNS, call
-the function check_valid_mx with the email address as the only argument:
+the function check_valid_mx with a single email address as the only argument:
 
-	&Net::validMX::check_valid_mx('kevin.mcgrail@thoughtworthy.com');
+	($rv, $reason) = &Net::validMX::check_valid_mx('kevin.mcgrail@thoughtworthy.com');
+
+check_valid_mx will return a true/false integer as the first value and a descriptive text message as warranted.
+
+NOTE: In the event of a DNS resolution problem, we do NOT return a failure.  We return a success to prevent DNS outages and delays from producing too many false positives.
+
+
+=head2 check_email_validity
+
+To check if an email address is formatted correctly, call the function
+check_email_validity with a single email address as the only argument:
+
+	$rv = &Net::validMX::check_valid_mx('kevin.mcgrail@thoughtworthy.com');
+
+check_email_validity will return a true/false integer where > 0 indicates that the email address looks valid.
+
+
+=head2 check_email_and_mx
+
+To check if an email address is formatted correctly, sanitize the email address some common end-user errors(*) and run check_valid_mx all from a single function, 
+use the function check_email_and_mx with a single email address as the only argument:
+
+        ($rv, $reason, $sanitized_email) = &Net::validMX::check_valid_mx('kevin.mcgrail@thoughtworthy.com');
+
+check_email_and_mx will return a true/false integer where > 0 indicates that the email address looks valid, a descriptive text message 
+as warranted, and a sanitized version of the email address argument .
+
+(*) Common end-user errors that are fixed: 
+
+=item All spaces are stripped.  Many users seem to enter things like Bob and Carol @ a big isp.com.
+
+=item Emails ending in @aol. or @aol
 
 =head2 EXAMPLE
 
-The distribution contains an example program suitable to demonstrate 
-working functionality and to query one or more email addresses.
+The distribution contains an example program to demonstrate working functionality as well to utilize as a command line interface
+to query one or more email addresses.
 
-Without any parameters, it will run a set of default tests:
+Run the program with the space-seperated email addresses to test as your arguments:
 
-	perl examples/check_primary_mx.pl
+	perl example/check_email_and_mx.pl kevin.mcgrail@thoughtworthy.com 
+or
+	perl example/check_email_and_mx.pl kevin.mcgrail@thoughtworthy.com google@google.com president@whitehouse.gov
 
-Otherwise, run the program with the email addresses to test as your
-arguments:
+If you supply only one email address argument, the program will exit with a exit status of 0 for a success and 1 for a failure:
 
-	perl examples/check_primary_mx.pl kevin.mcgrail@thoughtworthy.com
+	perl example/check_email_and_mx.pl kevin.mcgrail@failed || echo 'This email is no good'     
+
+=head2 MIMEDEFANG
+
+We are using this routine with MIMEDefang and have been for many months via the filter_sender hooks.  For example, make a function that excludes authorized senders for your particular setup and add the following code snippets to your mimedefang-filter:
+
+sub filter_initialize {
+  #for Check Valid MX
+  use Net::validMX qw(check_valid_mx);
+}
+
+sub is_authorized_sender {
+  my ($sender, $RelayAddr) = @_;
+
+  if ([test for authorized user]) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+sub filter_sender {
+  my ($sender, $ip, $hostname, $helo) = @_;
+  my ($rv, $reason);
+  #md_syslog('warning', "Testing $sender, $ip, $hostname, $helo");
+
+  if (&is_authorized_sender($sender, $RelayAddr)) {
+    return ('CONTINUE', "ok");
+  }
+
+  if ($sender ne '<>') {
+    ($rv, $reason) = &check_valid_mx($sender);
+    unless ($rv) {
+      md_syslog('warning', "Rejecting $sender - Invalid MX: $reason.");
+      return ('REJECT', "Sorry; $sender has an invalid MX record: $reason.");
+    }
+  }
+}
+
 
 =head1 COPYRIGHT 
 
 Copyright (c) 2006 Kevin A. McGrail.  All rights reserved.
 
-This program is free software; you can redistribute it and/or
-modify it under the Perl Artistic License v1.0 available at 
-http://www.perlfoundation.org/legal/licenses/artistic-1_0.html
+This distribution, including all of the files in the Net::validMX package, is free software; you can redistribute it and/or modify it under the Perl Artistic License v1.0 available at http://www.perlfoundation.org/legal/licenses/artistic-1_0.html
 
 L<perlartistic>
 
@@ -463,6 +597,8 @@ kevin.mcgrail@thoughtworthy.com
 
 =item v2.1  Released May 23, 2006.  Switched to a perl Library (Net::validMX).  Small efficiency change to short-circuit the DNS resolution of an IP address.
 
+=item v2.2  Under Development.  Clarified the LICENSE by pointing readers to the README.  Added functions check_email_and_mx & check_email_validity.  Expanded documentation and added check_email_and_mx & check_email_validity calls to example.  Cleaned up distribution production.  Changed logic to check MX records that resolve to IPs to see if it is privatized first.
+
 =back
 
 =head1 HOMEPAGE
@@ -480,15 +616,27 @@ MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
 
 =over 4
 
-=item - I'd like to convert the example script into a test script.  
+=item - I'd like to have the example script automatically built to have the correct #!/usr/bin/perl line and possibly installed in /usr/local/bin.
+
+=head1 SOLVED TODO ITEMS
+
+=item - I'd like to convert the example script(s) into test script(s).  
+
+ANSWER: Test::More was a great way to achieve this!
+
+=item - I'd like to know more info on what/how to make a META.yml file.
+
+ANSWER: I was using MakeMaker v6.03.  Instead I upgraded to 6.30 and make dist or make distdir then created the META.yml file.  I also used a trick from Net::DNS' Makefile.PL to add the license, author and abstract data directly to the META.yml file.
 
 =item - I'd like to make it so that the Makefile.PL creates a README on the fly from the pod in the library instead of pod2text lib/Net/validMX.pm > README.
+
+ANSWER: Thanks to Andreas J. Koenig for a post he wrote that dealt with my exact problem.  I added the PREOP and DIST_DEFAULT to the Makefile.PL.  I then modified this to use the same MANIFEST trick that is used for metafile and I'm happy with the end result.
 
 =back
 
 =head1 CREDITS
 
-Thanks to David F. Skoll, Jan-Pieter Cornet, Matthew van Eerde, and Mark Damrose
-for testing and suggestions.  Apologizes in advance if I missed anyone!
+Based on an idea from Les Miksell and much input from Jan Pieter Cornet.  Additional thanks to David F. Skoll, Matthew van Eerde, and Mark Damrose
+for testing and suggestions.  And sincere apologies in advance if I missed anyone!
 
 =cut
